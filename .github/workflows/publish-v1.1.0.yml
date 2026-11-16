@@ -66,11 +66,11 @@ jobs:
         run: |
           set -euo pipefail
           old_sha=2a61e816427a9ec8dbc2e127c641242d2c77bf24
-          existing=$(gh api "repos/$GH_REPO/git/ref/tags/v1.0.1" --jq '.object.sha' 2>/dev/null || true)
-          if [[ -z "$existing" ]]; then
-            gh api --method POST "repos/$GH_REPO/git/refs" -f ref=refs/tags/v1.0.1 -f sha="$old_sha" >/dev/null
-          else
+          if gh api "repos/$GH_REPO/git/ref/tags/v1.0.1" --jq '.object.sha' >/tmp/v1.0.1-sha 2>/dev/null; then
+            existing=$(cat /tmp/v1.0.1-sha)
             [[ "$existing" == "$old_sha" ]] || { echo 'Existing old tag differs; refusing to change it'; exit 1; }
+          else
+            gh api --method POST "repos/$GH_REPO/git/refs" -f ref=refs/tags/v1.0.1 -f sha="$old_sha" >/dev/null
           fi
           python3 - <<'PY'
           from pathlib import Path
