@@ -18,6 +18,7 @@ const {TOKEN_LIFETIME_MINUTES,validPassword,validResetToken,normalizeEmail,email
 const resetMailer=require('./reset-mailer');
 const {auditVisibility}=require('./audit-scope');
 const {validateBatch,bulkReviewAllowed,bulkTransition}=require('./bulk-policy');
+const {staff,pinInput,canPin,normalizeContacts,publicContacts,contactsMac,verifyContacts}=require('./community-settings');
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -269,12 +270,61 @@ app.post('/api/admin/donations',mustLogin,requireSuper,limiter(6,3600*1000,{name
     conn.release();
   }
 }));
+
+const mustStaff=(req,res,next)=>staff(req.user)?next():next(Object.assign(new Error('仅管理员可以操作'),{status:403}));
+app.get('/api/admin/pins',mustLogin,mustStaff,wrap(async(req,res)=>{
+  const page=Math.min(1000,Math.max(1,Number.parseInt(req.query.page,10)||1)),q=str(req.query.q,70);
+  if(q.length>70)fail('搜索关键词不得超过70字');
+  const terms=["p.status='published'"],args=[];
+  if(q){terms.push('(LOCATE(?,p.title)>0 OR LOCATE(?,p.body)>0)');args.push(q,q);}
+  const [rows]=await pool.query(`${postSelect} WHERE ${terms.join(' AND ')} ORDER BY p.created_at DESC,p.id DESC LIMIT 51 OFFSET ?`,[...args,(page-1)*50]);
+  res.json({items:rows.slice(0,50).map(p=>({...p,id:String(p.id),body:p.body.slice(0,260)})),page,hasMore:page<1000&&rows.length>50});
+}));
+app.post('/api/admin/posts/:id/pin',mustLogin,mustStaff,limiter(120,15*60*1000,{name:'post-pin',user:true}),wrap(async(req,res)=>{
+  const id=asId(req.params.id),{scope,pinned}=pinInput(req.body);
+  if(!canPin(req.user,scope))fail('社区首页置顶仅限超级管理员',403);
+  const column=scope==='home'?'home_pinned':'section_pinned';
+  const result=await transaction(async conn=>{
+    const [[p]]=await conn.query('SELECT id,title,status,home_pinned,section_pinned FROM posts WHERE id=? FOR UPDATE',[id]);
+    if(!p)fail('帖子不存在',404);if(p.status!=='published')fail('只能置顶已公开帖子',409);
+    if(!!p[column]!==pinned){
+      await conn.query(`UPDATE posts SET ${column}=? WHERE id=?`,[pinned?1:0,id]);
+      await logAction(req,'post.pin','post',id,{scope,before_pinned:!!p[column],pinned,target_name:p.title},conn);
+    }
+    return {id,home_pinned:scope==='home'?pinned:!!p.home_pinned,section_pinned:scope==='section'?pinned:!!p.section_pinned};
+  });res.json({ok:true,...result});
+}));
+async function loadFooterContacts(conn=pool,locked=false){
+  const [rows]=await conn.query(`SELECT setting_value,revision,integrity_mac FROM site_settings WHERE setting_key='footer_contacts' ${locked?'FOR UPDATE':''}`);
+  if(!rows.length)return {revision:0,enabled:false,items:[]};
+  const row=rows[0];let config;
+  try{config=normalizeContacts(typeof row.setting_value==='string'?JSON.parse(row.setting_value):row.setting_value);if(!verifyContacts(Number(row.revision),config,row.integrity_mac))throw Error('integrity');}
+  catch{fail('页脚配置完整性校验失败',503);}
+  return {revision:Number(row.revision),...config};
+}
+app.get('/api/site/contacts',wrap(async(req,res)=>res.json(publicContacts(await loadFooterContacts()))));
+app.get('/api/admin/contacts',mustLogin,requireSuper,wrap(async(req,res)=>res.json(await loadFooterContacts())));
+app.post('/api/admin/contacts',mustLogin,requireSuper,limiter(30,60*60*1000,{name:'footer-contacts',user:true}),wrap(async(req,res)=>{
+  const config=normalizeContacts(req.body);
+  if(!Number.isSafeInteger(req.body.revision)||req.body.revision<0)fail('配置版本号无效');
+  const conn=await pool.getConnection();let locked=false;
+  try{
+    const [[lock]]=await conn.query("SELECT GET_LOCK('trust_forum_footer_contacts',5) acquired");if(Number(lock.acquired)!==1)fail('配置正在保存，请稍后重试',409);locked=true;
+    await conn.beginTransaction();const current=await loadFooterContacts(conn,true);
+    if(current.revision!==req.body.revision)fail('配置已被其他会话更新，请刷新后重试',409);
+    const revision=current.revision+1,mac=contactsMac(revision,config);
+    await conn.query("INSERT INTO site_settings (setting_key,setting_value,revision,integrity_mac,updated_by) VALUES ('footer_contacts',?,?,?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value),revision=VALUES(revision),integrity_mac=VALUES(integrity_mac),updated_by=VALUES(updated_by)",[JSON.stringify(config),revision,mac,req.user.id]);
+    await logAction(req,'footer_contacts.update','site_setting','footer_contacts',{revision,enabled:config.enabled,contact_types:config.items.filter(x=>x.enabled).map(x=>x.type),count:config.items.filter(x=>x.enabled).length},conn);
+    await conn.commit();res.json({revision,...config});
+  }catch(e){await conn.rollback().catch(()=>{});throw e;}finally{if(locked)await conn.query("DO RELEASE_LOCK('trust_forum_footer_contacts')").catch(()=>{});conn.release();}
+}));
+
 app.get('/api/stats', wrap(async(req,res)=>{
   const [[a]] = await pool.query("SELECT COUNT(*) posts, SUM(type='exposure') exposures FROM posts WHERE status='published'");
   const [[b]] = await pool.query('SELECT COUNT(*) members FROM users');
   res.json({posts:Number(a.posts||0),exposures:Number(a.exposures||0),members:Number(b.members||0)});
 }));
-const postSelect = `SELECT p.id,p.type,p.category,p.title,p.body,p.anonymous,p.status,p.views,p.created_at,p.moderation_note,
+const postSelect = `SELECT p.id,p.type,p.category,p.title,p.body,p.anonymous,p.status,p.home_pinned,p.section_pinned,p.views,p.created_at,p.moderation_note,
   CASE WHEN p.anonymous=1 THEN 'member' ELSE u.role END author_role,
   CASE WHEN p.anonymous=1 THEN '匿名用户' ELSE u.username END author,
   (SELECT COUNT(*) FROM comments c WHERE c.post_id=p.id AND c.status='published') comments_count,
@@ -285,6 +335,7 @@ app.get('/api/posts', wrap(async(req,res)=>{
   const type = ['discussion','exposure'].includes(req.query.type) ? req.query.type : null;
   const category = /^[a-z0-9-]{1,64}$/.test(String(req.query.category||'')) ? req.query.category : null;
   const sort = req.query.sort === 'hot' ? 'hot' : 'new';
+  const placement=req.query.placement===undefined?'home':inSet(req.query.placement,['home','section'],'列表位置');
   const page = Math.min(100,Math.max(1,Number.parseInt(req.query.page,10)||1));
   const q = str(req.query.q,70);
   if(q.length>70)fail('搜索关键词不得超过70字',400);
@@ -297,7 +348,8 @@ app.get('/api/posts', wrap(async(req,res)=>{
       args.push(word,word,word,word);
     }
   }
-  const sql = `${postSelect} WHERE ${terms.join(' AND ')} ORDER BY ${sort==='new'?'p.created_at DESC':'likes_count DESC, p.created_at DESC'} LIMIT 15 OFFSET ?`;
+  const pinOrder=q?'':placement==='home'?'p.home_pinned DESC, ':'p.section_pinned DESC, ';
+  const sql = `${postSelect} WHERE ${terms.join(' AND ')} ORDER BY ${pinOrder}${sort==='new'?'p.created_at DESC, p.id DESC':'likes_count DESC, p.created_at DESC, p.id DESC'} LIMIT 15 OFFSET ?`;
   const [rows] = await pool.query(sql,[...args,(page-1)*15]);
   res.json({items:rows.map(r=>({...r,id:String(r.id),body:r.body.slice(0,260)})),page,hasMore:rows.length===15});
 }));
@@ -576,7 +628,7 @@ app.post('/api/admin/posts/:id/review',mustLogin,wrap(async(req,res)=>{
     if(!canModerateAuthor(req.user,post.author_role))fail('普通管理员不能处理其他管理员的帖子',403);
     if(decision==='published'&&!['pending','rejected'].includes(post.status))fail('只能发布待审或驳回的帖子',409);
     if(decision==='rejected'&&post.status!=='pending'||decision==='removed'&&post.status!=='published')fail('帖子状态已改变，请刷新列表',409);
-    await conn.query('UPDATE posts SET status=?,moderation_note=?,reviewed_by=?,reviewed_at=UTC_TIMESTAMP() WHERE id=?',[decision,note||null,req.user.id,id]);
+    await conn.query(`UPDATE posts SET status=?,home_pinned=IF(?='published',home_pinned,0),section_pinned=IF(?='published',section_pinned,0),moderation_note=?,reviewed_by=?,reviewed_at=UTC_TIMESTAMP() WHERE id=?`,[decision,decision,decision,note||null,req.user.id,id]);
     await logAction(req,'post.'+decision,'post',id,{note,before_status:post.status,status:decision,target_name:post.title},conn);
   });res.json({ok:true});
 }));
@@ -675,7 +727,7 @@ app.post('/api/admin/batch',mustLogin,limiter(8,15*60*1000,{name:'admin-batch',u
         target_name:item.title||item.username||item.slug||'',post_id:item.post_id?String(item.post_id):null,
         reviewed_evidence:reviewedEvidence&&action==='published',selected_count:ids.length};
       if(resource==='posts'){
-        await conn.query('UPDATE posts SET status=?,moderation_note=?,reviewed_by=?,reviewed_at=UTC_TIMESTAMP() WHERE id=?',[action,note,req.user.id,id]);
+        await conn.query(`UPDATE posts SET status=?,home_pinned=IF(?='published',home_pinned,0),section_pinned=IF(?='published',section_pinned,0),moderation_note=?,reviewed_by=?,reviewed_at=UTC_TIMESTAMP() WHERE id=?`,[action,action,action,note,req.user.id,id]);
       }else if(resource==='comments'){
         await conn.query('UPDATE comments SET status=? WHERE id=?',[action,id]);
         details.excerpt=item.body.slice(0,100);
@@ -856,7 +908,7 @@ async function start(){
   await fs.mkdir(STICKER_DIR,{recursive:true});
   await pool.query('SELECT 1');
   if(redis) await redis.connect();
-  app.listen(PORT,'0.0.0.0',()=>console.log(`[trust-forum] http://localhost:${PORT}`));
+  app.listen(PORT,process.env.BIND_HOST||'0.0.0.0',()=>console.log(`[trust-forum] http://localhost:${PORT}`));
   // Periodic hygiene for orphaned uploads and expired DB sessions.
   const maintenanceTimer=setInterval(()=>cleanup().catch(e=>console.error('[maintenance]',e.message)),6*3600*1000);
   maintenanceTimer.unref();

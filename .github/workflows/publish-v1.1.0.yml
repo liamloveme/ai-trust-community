@@ -1,0 +1,87 @@
+name: Publish v1.1.0
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-v1.1.0.yml'
+      - 'docs/releases/v1.1.0.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-v1.1.0
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.repository == 'liamloveme/ai-trust-community' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node -e "if(require('./package.json').version!=='1.1.0')process.exit(1)"
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: node --check src/server.js && node --check public/app.js
+      - name: Check release files
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          root=Path('发行文件/AI守望者代码-V3.2功能增强版')
+          expected={
+            'GitHub 开源首发指南.md':'57e3397dbacf51c6d561b1b8df0829da7bccefba1e0f01f884ae9aa4654addaf',
+            'V3.1 .html':'391a9354656e773266106071b4fa4b0713cd7dda25b7f7838d1432f1f6a5d6d2',
+            'V3.1 完整前后端源码.zip':'98100646c75585b154d8bd6d6cdff6c96b9d140c93e38a4cb33762d90f85cb7e',
+            '全量产品需求计划书.docx':'f69351f47c236d6863be5b0cf7b6d46677063697630920893b1424339f460e98',
+            'Codex 部署提示词.md':'cc634b7b17f37385a956e14bca6ef64e814331f0fe52ffb3d5ec7f99b017bba7',
+          }
+          assert {p.name for p in root.iterdir()}==set(expected)
+          for name,digest in expected.items():
+              assert hashlib.sha256((root/name).read_bytes()).hexdigest()==digest,name
+          print('Five verified release files')
+          PY
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Preserve old version and publish new release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          old_sha=2a61e816427a9ec8dbc2e127c641242d2c77bf24
+          existing=$(gh api "repos/$GH_REPO/git/ref/tags/v1.0.1" --jq '.object.sha' 2>/dev/null || true)
+          if [[ -z "$existing" ]]; then
+            gh api --method POST "repos/$GH_REPO/git/refs" -f ref=refs/tags/v1.0.1 -f sha="$old_sha" >/dev/null
+          else
+            [[ "$existing" == "$old_sha" ]] || { echo 'Existing old tag differs; refusing to change it'; exit 1; }
+          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          body=Path('docs/releases/v1.1.0.md').read_text('utf8')
+          body=body.replace('(../','(https://github.com/liamloveme/ai-trust-community/blob/main/docs/')
+          Path('/tmp/v1.1.0-notes.md').write_text(body,encoding='utf8')
+          PY
+          if gh release view v1.1.0 --json url >/dev/null 2>&1; then
+            echo 'Existing v1.1.0 release kept unchanged'
+            gh release view v1.1.0 --json url,isDraft,assets
+          else
+            delivery='发行文件/AI守望者代码-V3.2功能增强版'
+            gh release create v1.1.0 "$delivery"/* --target "$RELEASE_SHA" --title 'V3.2（v1.1.0）置顶与页脚联系方式' --notes-file /tmp/v1.1.0-notes.md
+          fi

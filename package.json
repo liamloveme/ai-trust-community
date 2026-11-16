@@ -1,6 +1,6 @@
 {
   "name": "trust-forum",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "private": true,
   "description": "AI API 交易安全社区 / 公益论坛",
   "type": "commonjs",

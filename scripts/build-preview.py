@@ -36,7 +36,7 @@ html=html.replace('<script src="/i18n-v31-data.js" defer></script>', '<script>\n
 html=html.replace('<script src="/i18n.js" defer></script>', '<script>\n'+i18n+'\n</script>')
 html=html.replace('<script src="/donation-networks.js" defer></script>', '<script>\n'+networks+'\n</script>')
 html=html.replace('<script src="/app.js" defer></script>', '<script>window.__STANDALONE_PREVIEW__ = true;</script>\n<script>\n'+js+'\n</script>')
-html=html.replace('<title>AI交易守望站 V3.1 修复版 · 公益安全社区</title>', '<title>AI交易守望站 V3.1 修复版 · 离线交互预览版</title>')
+html=html.replace('<title>AI交易守望站 V3.2 功能增强版 · 公益安全社区</title>', '<title>AI交易守望站 V3.2 功能增强版 · 离线交互预览版</title>')
 html=html.replace('PREVIEW · 独立演示','独立演示 · 数据仅在此页面生效')
 html=html.replace('<div id="toastArea"', '<div id="toastArea"')
 out=root/'AI交易守望站-独立HTML预览.html'

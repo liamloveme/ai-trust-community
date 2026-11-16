@@ -58,6 +58,8 @@ CREATE TABLE IF NOT EXISTS posts (
   body TEXT NOT NULL,
   anonymous TINYINT(1) NOT NULL DEFAULT 0,
   status ENUM('pending','published','rejected','removed') NOT NULL DEFAULT 'pending',
+  home_pinned TINYINT(1) NOT NULL DEFAULT 0,
+  section_pinned TINYINT(1) NOT NULL DEFAULT 0,
   views INT UNSIGNED NOT NULL DEFAULT 0,
   moderation_note VARCHAR(500) NULL,
   reviewed_by BIGINT UNSIGNED NULL,
@@ -66,6 +68,8 @@ CREATE TABLE IF NOT EXISTS posts (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY idx_posts_type_status_created (type, status, created_at),
   KEY idx_posts_author (author_id),
+  KEY idx_posts_home_pin (status,home_pinned,created_at,id),
+  KEY idx_posts_section_pin (category,status,section_pinned,created_at,id),
   CONSTRAINT fk_posts_author FOREIGN KEY (author_id) REFERENCES users(id),
   CONSTRAINT fk_posts_reviewer FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB;

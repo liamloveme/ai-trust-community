@@ -42,7 +42,7 @@ const LABELS={
  'appeal.accepted':'接受申诉复核','appeal.denied':'驳回申诉',
  'sticker.upload':'上传个人表情','sticker.active':'恢复表情','sticker.disabled':'禁用表情','sticker.deleted':'删除表情',
  'sticker.owner_delete':'用户删除个人表情','section.create':'新建栏目','section.update':'修改栏目','section.delete':'删除栏目',
- 'donations.update':'修改捐赠地址设置'
+ 'donations.update':'修改捐赠地址设置','post.pin':'帖子置顶设置','footer_contacts.update':'更新页脚联系方式'
 };
 function auditSummary(action,details={}){
  const base=LABELS[action]||action;
