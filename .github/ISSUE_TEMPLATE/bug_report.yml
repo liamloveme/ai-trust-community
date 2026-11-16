@@ -1,0 +1,27 @@
+name: Bug report
+description: 报告非安全性功能问题；涉及漏洞请使用 Security 私密报告
+labels: [bug]
+body:
+  - type: textarea
+    id: issue
+    attributes:
+      label: 问题与预期行为
+      description: 不要上传真实用户数据或密钥
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 版本 / Commit
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 可用模拟数据复现步骤
+    validations:
+      required: true
+  - type: textarea
+    id: results
+    attributes:
+      label: 实际行为与已尝试的解决方法

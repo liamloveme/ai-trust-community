@@ -1,0 +1,124 @@
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-trust_forum}
+      MYSQL_USER: ${DB_USER:-forum}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    security_opt: [no-new-privileges:true]
+    networks: [internal]
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    command: ["sh", "-c", "exec redis-server --appendonly no --save '' --requirepass \"$$REDIS_PASSWORD\" --maxmemory 256mb --maxmemory-policy noeviction"]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 15
+    security_opt: [no-new-privileges:true]
+    networks: [internal]
+  # Optional free self-hosted translation engine: extra CPU/RAM/disk required.
+  # Started with: docker compose --profile translate up -d --build
+  # No public exposed port. Official LibreTranslate public API requires paid key.
+  translate:
+    image: libretranslate/libretranslate:v1.9.6
+    profiles: ["translate"]
+    restart: unless-stopped
+    environment:
+      LT_DISABLE_WEB_UI: "true"
+      LT_DISABLE_FILES_TRANSLATION: "true"
+      LT_CHAR_LIMIT: "8500"
+      LT_LOAD_ONLY: ${TRANSLATE_LOAD_ONLY:-en,zh,zt,ja,ko,es,fr,de,pb}
+      LT_THREADS: "2"
+    volumes:
+      - translate_models:/home/libretranslate/.local
+    networks: [internal]
+    healthcheck:
+      test: ["CMD", "./venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15m
+    mem_limit: ${TRANSLATE_MEMORY:-16g}
+    cpus: ${TRANSLATE_CPUS:-8.0}
+    security_opt: [no-new-privileges:true]
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    ports:
+      - "127.0.0.1:${PORT:-3000}:3000"
+    environment:
+      PORT: 3000
+      NODE_ENV: ${NODE_ENV:-production}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:3000}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: ${DB_USER:-forum}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      DB_NAME: ${DB_NAME:-trust_forum}
+      REDIS_ENABLED: "true"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      DONATION_CONFIG_HMAC_KEY: ${DONATION_CONFIG_HMAC_KEY:?DONATION_CONFIG_HMAC_KEY is required}
+      TRANSLATE_INTERNAL_URL: ${TRANSLATE_INTERNAL_URL:-http://translate:5000}
+      TRANSLATE_ALLOWED_HOSTS: ${TRANSLATE_ALLOWED_HOSTS:-}
+      TRANSLATE_MODEL_REVISION: ${TRANSLATE_MODEL_REVISION:-1}
+      TRANSLATE_CONCURRENCY: ${TRANSLATE_CONCURRENCY:-2}
+      TRANSLATE_QUEUE_SIZE: ${TRANSLATE_QUEUE_SIZE:-32}
+      TRANSLATE_QUEUE_WAIT_MS: ${TRANSLATE_QUEUE_WAIT_MS:-15000}
+      TRANSLATE_TIMEOUT_MS: ${TRANSLATE_TIMEOUT_MS:-30000}
+      TURNSTILE_SITEKEY: ${TURNSTILE_SITEKEY:-}
+      TURNSTILE_SECRET: ${TURNSTILE_SECRET:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      INIT_ADMIN_USERNAME: ${INIT_ADMIN_USERNAME:-}
+      INIT_ADMIN_EMAIL: ${INIT_ADMIN_EMAIL:-}
+      INIT_ADMIN_PASSWORD: ${INIT_ADMIN_PASSWORD:-}
+    volumes:
+      - uploads:/app/data/uploads
+      - stickers:/app/data/stickers
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    pids_limit: 120
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 30s
+    mem_limit: ${APP_MEMORY:-2g}
+    cpus: ${APP_CPUS:-2.0}
+    networks: [internal]
+networks:
+  internal:
+    internal: false  # app needs outgoing HTTPS to verify Turnstile
+volumes:
+  mysql_data:
+  uploads:
+  stickers:
+  translate_models:

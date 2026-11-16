@@ -1,0 +1,13 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+node_modules
+*.log
+*.docx
+*.png
+*.jpg
+backups
+__pycache__
+coverage

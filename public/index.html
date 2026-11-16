@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="referrer" content="no-referrer" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#f6f8fc" />
+  <meta name="description" content="AI 大模型账号与 API Key 交易安全公益交流社区。讨论经验、提交证据、举报风险、申诉纠错。" />
+  <title>AI交易守望站 V3.1 修复版 · 公益安全社区</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <button class="brand" data-action="home" aria-label="回到首页"><span class="brand-symbol">◈</span><span><strong>AI交易守望站</strong><small>AI TRUST COMMUNITY</small></span></button>
+        <form class="search-box" id="searchForm" role="search"><span aria-hidden="true">⌕</span><input id="searchInput" name="q" type="search" maxlength="70" autocomplete="off" placeholder="搜索交易经验、风险提醒、帖子关键词" aria-label="搜索论坛内容" /><button id="searchSubmit" class="search-submit" type="submit">搜索</button></form>
+        <div class="head-actions"><span class="preview-label" id="previewLabel" hidden>PREVIEW · 独立演示</span><div id="identityContainer"></div><button id="accountButton" class="btn btn-light" data-action="auth">登录</button><button class="btn btn-primary" data-action="compose">＋ 发表帖子</button></div>
+      </div>
+    </header>
+    <div class="page-grid">
+      <aside class="sidebar">
+        <div class="sidebar-title">社区导航</div>
+        <nav id="sideNav" aria-label="社区导航"></nav>
+        <div id="adminNavSlot"></div>
+        <div class="side-foot"><span class="small-green-dot"></span> 非营利性信息交流社区<br><span class="muted">理性交流 · 保护隐私 · 证据优先</span></div>
+      </aside>
+      <main id="mainContent" class="main-content" tabindex="-1"></main>
+      <aside class="right-rail" id="rightRail">
+        <div class="right-card notice-card"><div class="mini-title">🛡️ 社区安全倡议</div><h3>让每一笔 AI 交易<br>多一份透明与保障</h3><p>分享真实经历、识别可疑交易。举报信息经人工审核后展示，并不代表平台已判定事实。</p><button class="btn btn-rail" data-action="compose-exposure">提交风险线索 ↗</button></div>
+        <div class="right-card"><div class="right-head">社区概况 <span class="live-dot">● 实时</span></div><div id="statsContainer" class="stats-grid"></div></div>
+        <div class="right-card"><div class="right-head">交易前先做这 4 件事</div><ol class="safety-list"><li>核对对方授权与交付方式</li><li>小额测试 API 可用性及权限</li><li>保留交易记录与完整证据</li><li>尽量使用可靠担保机制</li></ol></div>
+        <div class="right-card"><div class="right-head">社区规则</div><p class="plain-small">禁止公布个人身份信息、手机号、银行卡号；禁止人身攻击、虚假指控、敲诈与广告刷屏。</p><button class="text-link" data-action="rules">阅读完整社区公约 →</button></div>
+      </aside>
+    </div>
+    <footer class="footer" id="siteFooter">
+      <div class="footer-left" id="donationFooter"><div class="donation-prompt">为维持网站正常运营，希望大家积极捐赠加密货币维持运营</div><div class="donation-links" id="donationLinks">暂无公开捐赠地址</div></div>
+      <div class="footer-right"><span>© 2026 AI交易守望站 · </span><span>公益信息交流，不提供交易担保，也不对用户陈述作事实背书</span> · <button data-action="rules">社区公约</button></div>
+    </footer>
+  </div>
+  <div id="toastArea" aria-live="polite"></div>
+  <div id="modalRoot"></div>
+  <script src="/i18n-main-data.js" defer></script>
+  <script src="/i18n-admin-data.js" defer></script>
+  <script src="/i18n-forms-data.js" defer></script>
+  <script src="/i18n-emoji-data.js" defer></script>
+  <script src="/i18n-guide-data.js" defer></script>
+  <script src="/i18n-identity-data.js" defer></script>
+  <script src="/i18n-permissions-data.js" defer></script>
+  <script src="/i18n-footer-data.js" defer></script>
+  <script src="/i18n-v24-data.js" defer></script>
+  <script src="/i18n-v25-data.js" defer></script>
+  <script src="/i18n-v26-data.js" defer></script>
+  <script src="/i18n-v27-data.js" defer></script>
+  <script src="/i18n-v31-data.js" defer></script>
+  <script src="/i18n.js" defer></script>
+  <script src="/donation-networks.js" defer></script>
+  <script src="/app.js" defer></script>
+</body>
+</html>
